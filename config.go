@@ -28,3 +28,10 @@ func (cfg *apiConfig) handleMetrics(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (cfg *apiConfig) handleAdminMetrics(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-9")
+  html := fmt.Sprintf("<html><body><h1>Welcome, Chirpy Admin</h1><p>Chirpy has been visited %d times!</p></body></html>", cfg.fileserverHits)
+	io.WriteString(w, html)
+	w.WriteHeader(http.StatusOK)
+}
+
