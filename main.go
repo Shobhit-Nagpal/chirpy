@@ -26,6 +26,7 @@ func main() {
 
   serveMux.HandleFunc("POST /api/chirps", handleCreateChirp)
   serveMux.HandleFunc("GET /api/chirps", handleGetChirps)
+  serveMux.HandleFunc("GET /api/chirps/{chirpId}", handleGetChirpById)
 
 	server := &http.Server{
 		Handler: serveMux,

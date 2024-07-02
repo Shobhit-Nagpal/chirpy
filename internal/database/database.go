@@ -2,6 +2,7 @@ package database
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"sync"
 )
@@ -94,7 +95,7 @@ func (db *DB) ensureDB() error {
 			return err
 		}
 
-    os.WriteFile(db.path, []byte("{}"), 066)
+    err = os.WriteFile(db.path, []byte("{}"), 066)
 		if err != nil {
 			return err
 		}
@@ -103,6 +104,19 @@ func (db *DB) ensureDB() error {
 	}
 
 	return err
+}
+
+func (db *DB) GetChirpById(id int) (Chirp, error) {
+  dat, err := db.loadDB()
+	if err != nil {
+		return Chirp{}, nil
+	}
+
+  if chirp, found := dat.Chirps[id]; found {
+    return chirp, nil
+  } else {
+    return Chirp{}, errors.New("Chirp not found")
+  }
 }
 
 func (db *DB) loadDB() (DBStructure, error) {

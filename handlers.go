@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/Shobhit-Nagpal/chirpy/internal/database"
@@ -128,6 +129,49 @@ func handleGetChirps(w http.ResponseWriter, req *http.Request) {
 	}
 
 	err = respondWithJSON(w, http.StatusOK, chirps)
+	if err != nil {
+		log.Printf("Error encoding to json: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+	}
+	return
+}
+
+func handleGetChirpById(w http.ResponseWriter, req *http.Request) {
+  idStr := req.PathValue("chirpId")
+
+	path, err := os.Getwd()
+	if err != nil {
+		log.Printf("Error getting current directory: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	db, err := database.NewDB(path + "/database.json")
+	if err != nil {
+		log.Printf("Error creating DB connection: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Couldn't connect to DB")
+		return
+	}
+
+  id, err := strconv.Atoi(idStr)
+	if err != nil {
+		log.Printf("Error converting string to integer for id: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+
+	chirp, err := db.GetChirpById(id)
+	if err != nil {
+		log.Printf("Error getting chirps: %s", err)
+    if err.Error() == "Chirp not found" {
+      err = respondWithError(w, http.StatusNotFound, err.Error())
+    } else {
+      err = respondWithError(w, http.StatusInternalServerError, "Couldn't get chirps")
+    }
+		return
+	}
+
+	err = respondWithJSON(w, http.StatusOK, chirp)
 	if err != nil {
 		log.Printf("Error encoding to json: %s", err)
 		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
