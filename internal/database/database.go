@@ -12,6 +12,11 @@ type Chirp struct {
 	Body string `json:"body"`
 }
 
+type User struct {
+	Id    int    `json:"id"`
+	Email string `json:"email"`
+}
+
 type DB struct {
 	path string
 	mux  *sync.RWMutex
@@ -19,6 +24,7 @@ type DB struct {
 
 type DBStructure struct {
 	Chirps map[int]Chirp `json:"chirps"`
+	Users  map[int]User  `json:"users"`
 }
 
 func NewDB(path string) (*DB, error) {
@@ -55,10 +61,10 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 	chirps = append(chirps, chirp)
 
 	for idx := range chirps {
-		if _, found := dat.Chirps[idx + 1]; found {
+		if _, found := dat.Chirps[idx+1]; found {
 			continue
 		} else {
-			dat.Chirps[idx + 1] = chirp
+			dat.Chirps[idx+1] = chirp
 		}
 	}
 
@@ -67,6 +73,39 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 	return chirp, nil
 }
 
+func (db *DB) CreateUser(email string) (User, error) {
+	user := User{}
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	dat, err := db.loadDB()
+	if err != nil {
+		return user, err
+	}
+
+	users := []User{}
+	for _, user := range dat.Users {
+		users = append(users, user)
+	}
+
+	user.Id = len(users) + 1
+	user.Email = email
+	users = append(users, user)
+
+	for idx, user := range users {
+    if usr, found := dat.Users[idx + 1]; found {
+      if usr.Email == email {
+        return User{}, errors.New("User exists")
+      }
+    } else {
+      dat.Users[idx + 1] = user
+    }
+	}
+
+	db.writeDB(dat)
+
+	return user, nil
+}
 func (db *DB) GetChirps() ([]Chirp, error) {
 
 	chirps := []Chirp{}
@@ -95,7 +134,7 @@ func (db *DB) ensureDB() error {
 			return err
 		}
 
-    err = os.WriteFile(db.path, []byte("{}"), 066)
+		err = os.WriteFile(db.path, []byte("{}"), 066)
 		if err != nil {
 			return err
 		}
@@ -107,22 +146,23 @@ func (db *DB) ensureDB() error {
 }
 
 func (db *DB) GetChirpById(id int) (Chirp, error) {
-  dat, err := db.loadDB()
+	dat, err := db.loadDB()
 	if err != nil {
 		return Chirp{}, nil
 	}
 
-  if chirp, found := dat.Chirps[id]; found {
-    return chirp, nil
-  } else {
-    return Chirp{}, errors.New("Chirp not found")
-  }
+	if chirp, found := dat.Chirps[id]; found {
+		return chirp, nil
+	} else {
+		return Chirp{}, errors.New("Chirp not found")
+	}
 }
 
 func (db *DB) loadDB() (DBStructure, error) {
 	dbStructure := DBStructure{
-    Chirps: map[int]Chirp{},
-  }
+		Chirps: map[int]Chirp{},
+		Users:  map[int]User{},
+	}
 	dat, err := os.ReadFile(db.path)
 	if err != nil {
 		return dbStructure, err

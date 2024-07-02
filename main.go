@@ -1,12 +1,16 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 	"os"
 )
 
 func main() {
+//	dbg := flag.Bool("debug", false, "Enable debug mode")
+//	flag.Parse()
+
 	apiCfg := &apiConfig{
 		fileserverHits: 0,
 	}
@@ -24,9 +28,12 @@ func main() {
 	serveMux.HandleFunc("GET /api/metrics", apiCfg.handleMetrics)
 	serveMux.HandleFunc("GET /api/reset", apiCfg.handleReset)
 
-  serveMux.HandleFunc("POST /api/chirps", handleCreateChirp)
-  serveMux.HandleFunc("GET /api/chirps", handleGetChirps)
-  serveMux.HandleFunc("GET /api/chirps/{chirpId}", handleGetChirpById)
+	//Chirp routes
+	serveMux.HandleFunc("POST /api/chirps", handleCreateChirp)
+	serveMux.HandleFunc("GET /api/chirps", handleGetChirps)
+	serveMux.HandleFunc("GET /api/chirps/{chirpId}", handleGetChirpById)
+
+	serveMux.HandleFunc("POST /api/users", handleCreateUser)
 
 	server := &http.Server{
 		Handler: serveMux,

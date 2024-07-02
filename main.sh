@@ -1,4 +1,5 @@
-#!/bin/bash
+#/bin/bash
 
-echo "Server restarted!"
-go run .
+go build -o out
+mv out bin
+./bin/out

@@ -137,7 +137,7 @@ func handleGetChirps(w http.ResponseWriter, req *http.Request) {
 }
 
 func handleGetChirpById(w http.ResponseWriter, req *http.Request) {
-  idStr := req.PathValue("chirpId")
+	idStr := req.PathValue("chirpId")
 
 	path, err := os.Getwd()
 	if err != nil {
@@ -153,7 +153,7 @@ func handleGetChirpById(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-  id, err := strconv.Atoi(idStr)
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		log.Printf("Error converting string to integer for id: %s", err)
 		err = respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
@@ -163,15 +163,68 @@ func handleGetChirpById(w http.ResponseWriter, req *http.Request) {
 	chirp, err := db.GetChirpById(id)
 	if err != nil {
 		log.Printf("Error getting chirps: %s", err)
-    if err.Error() == "Chirp not found" {
-      err = respondWithError(w, http.StatusNotFound, err.Error())
-    } else {
-      err = respondWithError(w, http.StatusInternalServerError, "Couldn't get chirps")
-    }
+		if err.Error() == "Chirp not found" {
+			err = respondWithError(w, http.StatusNotFound, err.Error())
+		} else {
+			err = respondWithError(w, http.StatusInternalServerError, "Couldn't get chirps")
+		}
 		return
 	}
 
 	err = respondWithJSON(w, http.StatusOK, chirp)
+	if err != nil {
+		log.Printf("Error encoding to json: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+	}
+	return
+}
+
+func handleCreateUser(w http.ResponseWriter, req *http.Request) {
+	type Request struct {
+		Email string `json:"email"`
+	}
+
+	body := Request{}
+
+	bodyBytes, err := io.ReadAll(req.Body)
+	if err != nil {
+		log.Printf("Error encoding to json: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	err = json.Unmarshal(bodyBytes, &body)
+	if err != nil {
+		log.Printf("Error encoding to json: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	path, err := os.Getwd()
+	if err != nil {
+		log.Printf("Error getting current directory: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	db, err := database.NewDB(path + "/database.json")
+	if err != nil {
+		log.Printf("Error creating DB connection: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Couldn't connect to DB")
+		return
+	}
+
+	user, err := db.CreateUser(body.Email)
+	if err != nil {
+		log.Printf("Error creating user: %s", err)
+		if err.Error() == "User exists" {
+			err = respondWithError(w, http.StatusBadRequest, err.Error())
+		} else {
+			err = respondWithError(w, http.StatusInternalServerError, "Couldn't connect to DB")
+		}
+		return
+	}
+	err = respondWithJSON(w, http.StatusCreated, user)
 	if err != nil {
 		log.Printf("Error encoding to json: %s", err)
 		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
