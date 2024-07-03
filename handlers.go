@@ -181,7 +181,8 @@ func handleGetChirpById(w http.ResponseWriter, req *http.Request) {
 
 func handleCreateUser(w http.ResponseWriter, req *http.Request) {
 	type Request struct {
-		Email string `json:"email"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	body := Request{}
@@ -214,7 +215,7 @@ func handleCreateUser(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	user, err := db.CreateUser(body.Email)
+	user, err := db.CreateUser(body.Email, body.Password)
 	if err != nil {
 		log.Printf("Error creating user: %s", err)
 		if err.Error() == "User exists" {
@@ -228,6 +229,75 @@ func handleCreateUser(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Printf("Error encoding to json: %s", err)
 		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+	}
+	return
+}
+
+func handleLogin(w http.ResponseWriter, req *http.Request) {
+	type Request struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	body := Request{}
+
+	bodyBytes, err := io.ReadAll(req.Body)
+	if err != nil {
+		log.Printf("Error encoding to json: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	err = json.Unmarshal(bodyBytes, &body)
+	if err != nil {
+		log.Printf("Error encoding to json: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	path, err := os.Getwd()
+	if err != nil {
+		log.Printf("Error getting current directory: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	db, err := database.NewDB(path + "/database.json")
+	if err != nil {
+		log.Printf("Error creating DB connection: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Couldn't connect to DB")
+		return
+	}
+
+	type Response struct {
+		Id    int    `json:"id"`
+		Email string `json:"email"`
+	}
+
+
+	login, user, err := db.LoginUser(body.Email, body.Password)
+	if err != nil {
+		log.Printf("Error logging in user: %s", err)
+		if err.Error() == "User not found" {
+			err = respondWithError(w, http.StatusNotFound, err.Error())
+		} else {
+			err = respondWithError(w, http.StatusInternalServerError, "Couldn't connect to DB")
+		}
+		return
+	}
+
+	if !login {
+		err = respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+	} else {
+    resp := Response{
+      Email: user.Email,
+      Id: user.Id,
+    }
+		err = respondWithJSON(w, http.StatusOK, resp)
+		if err != nil {
+			log.Printf("Error encoding to json: %s", err)
+			err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		}
 	}
 	return
 }

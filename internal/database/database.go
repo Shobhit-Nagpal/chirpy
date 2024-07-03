@@ -3,8 +3,15 @@ package database
 import (
 	"encoding/json"
 	"errors"
+	"golang.org/x/crypto/bcrypt"
 	"os"
 	"sync"
+)
+
+const (
+	MinCost     int = 4  // the minimum allowable cost as passed in to GenerateFromPassword
+	MaxCost     int = 31 // the maximum allowable cost as passed in to GenerateFromPassword
+	DefaultCost int = 10 // the cost that will actually be set if a cost below MinCost is passed into GenerateFromPassword
 )
 
 type Chirp struct {
@@ -13,8 +20,9 @@ type Chirp struct {
 }
 
 type User struct {
-	Id    int    `json:"id"`
-	Email string `json:"email"`
+	Id       int    `json:"id"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type DB struct {
@@ -73,7 +81,7 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 	return chirp, nil
 }
 
-func (db *DB) CreateUser(email string) (User, error) {
+func (db *DB) CreateUser(email, password string) (User, error) {
 	user := User{}
 	db.mux.Lock()
 	defer db.mux.Unlock()
@@ -90,22 +98,51 @@ func (db *DB) CreateUser(email string) (User, error) {
 
 	user.Id = len(users) + 1
 	user.Email = email
+
+	hashedPwdBytes, err := bcrypt.GenerateFromPassword([]byte(password), DefaultCost)
+	if err != nil {
+		return User{}, err
+	}
+	user.Password = string(hashedPwdBytes)
 	users = append(users, user)
 
 	for idx, user := range users {
-    if usr, found := dat.Users[idx + 1]; found {
-      if usr.Email == email {
-        return User{}, errors.New("User exists")
-      }
-    } else {
-      dat.Users[idx + 1] = user
-    }
+		if usr, found := dat.Users[idx+1]; found {
+			if usr.Email == email {
+				return User{}, errors.New("User exists")
+			}
+		} else {
+			dat.Users[idx+1] = user
+		}
 	}
 
 	db.writeDB(dat)
 
 	return user, nil
 }
+
+func (db *DB) LoginUser(email, password string) (bool, User, error) {
+  user := User{}
+
+	dat, err := db.loadDB()
+	if err != nil {
+		return false, user, err
+	}
+
+  for _, userInDb := range dat.Users {
+    if userInDb.Email == email {
+      err = bcrypt.CompareHashAndPassword([]byte(userInDb.Password), []byte(password))
+      if err != nil {
+        return false, user, nil
+      }
+
+      return true, userInDb, nil
+    }
+  }
+
+  return false, user, errors.New("User not found")
+}
+
 func (db *DB) GetChirps() ([]Chirp, error) {
 
 	chirps := []Chirp{}

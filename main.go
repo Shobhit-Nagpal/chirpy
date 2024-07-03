@@ -1,7 +1,7 @@
 package main
 
 import (
-	"flag"
+//	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -33,7 +33,9 @@ func main() {
 	serveMux.HandleFunc("GET /api/chirps", handleGetChirps)
 	serveMux.HandleFunc("GET /api/chirps/{chirpId}", handleGetChirpById)
 
+  //User routes
 	serveMux.HandleFunc("POST /api/users", handleCreateUser)
+	serveMux.HandleFunc("POST /api/login", handleLogin)
 
 	server := &http.Server{
 		Handler: serveMux,
