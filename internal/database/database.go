@@ -121,6 +121,30 @@ func (db *DB) CreateUser(email, password string) (User, error) {
 	return user, nil
 }
 
+func (db *DB) UpdateUser(id int, email, password string) (User, error) {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+  dat, err := db.loadDB()
+	if err != nil {
+		return User{}, err
+	}
+
+  for _, userInDb := range dat.Users {
+    if userInDb.Id == id {
+      userInDb.Email = email
+      hashedPwdBytes, err := bcrypt.GenerateFromPassword([]byte(password), DefaultCost)
+      if err != nil {
+        return User{}, err
+      }
+      userInDb.Password = string(hashedPwdBytes)
+      dat.Users[id] = userInDb
+      db.writeDB(dat)
+      return userInDb, nil
+    }
+  }
+  return User{}, errors.New("User doesn't exist")
+}
+
 func (db *DB) LoginUser(email, password string) (bool, User, error) {
   user := User{}
 

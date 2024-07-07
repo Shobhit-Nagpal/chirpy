@@ -1,19 +1,30 @@
 package main
 
 import (
-//	"flag"
+	//	"flag"
+	"github.com/joho/godotenv"
+//  "github.com/golang-jwt/jwt/v5"
 	"log"
 	"net/http"
 	"os"
 )
 
 func main() {
-//	dbg := flag.Bool("debug", false, "Enable debug mode")
-//	flag.Parse()
+	//	dbg := flag.Bool("debug", false, "Enable debug mode")
+	//	flag.Parse()
+
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+  jwt_secret := os.Getenv("JWT_SECRET")
 
 	apiCfg := &apiConfig{
 		fileserverHits: 0,
+    jwtSecret: []byte(jwt_secret),
 	}
+
 	serveMux := http.NewServeMux()
 
 	pwd, err := os.Getwd()
@@ -33,9 +44,10 @@ func main() {
 	serveMux.HandleFunc("GET /api/chirps", handleGetChirps)
 	serveMux.HandleFunc("GET /api/chirps/{chirpId}", handleGetChirpById)
 
-  //User routes
+	//User routes
 	serveMux.HandleFunc("POST /api/users", handleCreateUser)
-	serveMux.HandleFunc("POST /api/login", handleLogin)
+	serveMux.HandleFunc("POST /api/login", apiCfg.handleLogin)
+	serveMux.HandleFunc("PUT /api/users", apiCfg.handleUpdateUser)
 
 	server := &http.Server{
 		Handler: serveMux,

@@ -2,14 +2,17 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Shobhit-Nagpal/chirpy/internal/database"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func handleCreateChirp(w http.ResponseWriter, req *http.Request) {
@@ -181,8 +184,9 @@ func handleGetChirpById(w http.ResponseWriter, req *http.Request) {
 
 func handleCreateUser(w http.ResponseWriter, req *http.Request) {
 	type Request struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email            string `json:"email"`
+		Password         string `json:"password"`
+		ExpiresInSeconds *int   `json:"expires_in_seconds"`
 	}
 
 	body := Request{}
@@ -225,7 +229,17 @@ func handleCreateUser(w http.ResponseWriter, req *http.Request) {
 		}
 		return
 	}
-	err = respondWithJSON(w, http.StatusCreated, user)
+
+  type Response struct {
+    Id    int    `json:"id"`
+    Email string `json:"email"`
+  }
+
+	resp := Response{
+		Email: user.Email,
+		Id:    user.Id,
+	}
+	err = respondWithJSON(w, http.StatusCreated, resp)
 	if err != nil {
 		log.Printf("Error encoding to json: %s", err)
 		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
@@ -233,7 +247,7 @@ func handleCreateUser(w http.ResponseWriter, req *http.Request) {
 	return
 }
 
-func handleLogin(w http.ResponseWriter, req *http.Request) {
+func (cfg *apiConfig) handleLogin(w http.ResponseWriter, req *http.Request) {
 	type Request struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -272,8 +286,8 @@ func handleLogin(w http.ResponseWriter, req *http.Request) {
 	type Response struct {
 		Id    int    `json:"id"`
 		Email string `json:"email"`
+		Token string `json:"token"`
 	}
-
 
 	login, user, err := db.LoginUser(body.Email, body.Password)
 	if err != nil {
@@ -289,15 +303,125 @@ func handleLogin(w http.ResponseWriter, req *http.Request) {
 	if !login {
 		err = respondWithError(w, http.StatusUnauthorized, "Unauthorized")
 	} else {
-    resp := Response{
-      Email: user.Email,
-      Id: user.Id,
-    }
+		claims := &jwt.RegisteredClaims{
+			Issuer:    "chirpy",
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(2 * time.Second)),
+			Subject:   strconv.Itoa(user.Id),
+		}
+
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		ss, err := token.SignedString(cfg.jwtSecret)
+		if err != nil {
+			log.Printf("Error creating jwt: %s", err)
+			err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		}
+		resp := Response{
+			Email: user.Email,
+			Id:    user.Id,
+			Token: ss,
+		}
 		err = respondWithJSON(w, http.StatusOK, resp)
 		if err != nil {
 			log.Printf("Error encoding to json: %s", err)
 			err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		}
 	}
+	return
+}
+
+func (cfg *apiConfig) handleUpdateUser(w http.ResponseWriter, req *http.Request) {
+	type Request struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+  bodyBytes, err := io.ReadAll(req.Body)
+	if err != nil {
+		log.Printf("Error encoding to json: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+  body := Request{}
+
+	err = json.Unmarshal(bodyBytes, &body)
+	if err != nil {
+		log.Printf("Error encoding to json: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+  authorization := req.Header.Get("Authorization")
+  if authorization == "" {
+    //return with err
+    err = respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+    return
+  }
+
+  tokenString := strings.Fields(authorization)
+  token, err := jwt.ParseWithClaims(tokenString[1], &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
+    return []byte(cfg.jwtSecret), nil
+  })
+	if err != nil {
+		log.Printf("Error parsing token: %s", err)
+    err = respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+  fmt.Println("TOKEN", token)
+  userId, err := token.Claims.GetSubject()
+  fmt.Println("USER ID:", userId)
+	if err != nil {
+		log.Printf("Error getting user id: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+  userIdInt, err := strconv.Atoi(userId)
+  fmt.Println(userId)
+	if err != nil {
+		log.Printf("Error converting user id: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+  path, err := os.Getwd()
+	if err != nil {
+		log.Printf("Error getting current directory: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	db, err := database.NewDB(path + "/database.json")
+	if err != nil {
+		log.Printf("Error creating DB connection: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Couldn't connect to DB")
+		return
+	}
+
+  fmt.Println("ALL GOOD HERE")
+
+  user, err := db.UpdateUser(userIdInt, body.Email, body.Password)
+	if err != nil {
+		log.Printf("Error updating user: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	type Response struct {
+		Id    int    `json:"id"`
+		Email string `json:"email"`
+	}
+
+		resp := Response{
+			Email: user.Email,
+			Id:    user.Id,
+		}
+		err = respondWithJSON(w, http.StatusOK, resp)
+		if err != nil {
+			log.Printf("Error encoding to json: %s", err)
+			err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		}
 	return
 }
