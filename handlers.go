@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -287,6 +289,7 @@ func (cfg *apiConfig) handleLogin(w http.ResponseWriter, req *http.Request) {
 		Id    int    `json:"id"`
 		Email string `json:"email"`
 		Token string `json:"token"`
+    RefreshToken string `json:"refresh_token"`
 	}
 
 	login, user, err := db.LoginUser(body.Email, body.Password)
@@ -306,7 +309,7 @@ func (cfg *apiConfig) handleLogin(w http.ResponseWriter, req *http.Request) {
 		claims := &jwt.RegisteredClaims{
 			Issuer:    "chirpy",
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(2 * time.Second)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(60 * 60 * time.Second)),
 			Subject:   strconv.Itoa(user.Id),
 		}
 
@@ -316,10 +319,18 @@ func (cfg *apiConfig) handleLogin(w http.ResponseWriter, req *http.Request) {
 			log.Printf("Error creating jwt: %s", err)
 			err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		}
+    refreshTokenBytes := make([]byte, 32)
+    _, err = rand.Read(refreshTokenBytes)
+		if err != nil {
+			log.Printf("Error creating refresh token: %s", err)
+			err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		}
+
 		resp := Response{
 			Email: user.Email,
 			Id:    user.Id,
 			Token: ss,
+      RefreshToken: hex.EncodeToString(refreshTokenBytes),
 		}
 		err = respondWithJSON(w, http.StatusOK, resp)
 		if err != nil {
@@ -369,9 +380,7 @@ func (cfg *apiConfig) handleUpdateUser(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-  fmt.Println("TOKEN", token)
   userId, err := token.Claims.GetSubject()
-  fmt.Println("USER ID:", userId)
 	if err != nil {
 		log.Printf("Error getting user id: %s", err)
 		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
@@ -424,4 +433,29 @@ func (cfg *apiConfig) handleUpdateUser(w http.ResponseWriter, req *http.Request)
 			err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		}
 	return
+}
+
+func (cfg *apiConfig) handleRefresh(w http.ResponseWriter, req *http.Request) {
+  authorization := req.Header.Get("Authorization")
+  if authorization == "" {
+    //return with err
+    respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+    return
+  }
+
+  tokenString := strings.Fields(authorization)
+
+	path, err := os.Getwd()
+	if err != nil {
+		log.Printf("Error getting current directory: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	db, err := database.NewDB(path + "/database.json")
+	if err != nil {
+		log.Printf("Error creating DB connection: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Couldn't connect to DB")
+		return
+	}
 }

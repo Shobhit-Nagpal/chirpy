@@ -47,6 +47,8 @@ func main() {
 	//User routes
 	serveMux.HandleFunc("POST /api/users", handleCreateUser)
 	serveMux.HandleFunc("POST /api/login", apiCfg.handleLogin)
+	serveMux.HandleFunc("POST /api/refresh", apiCfg.handleRefresh)
+	serveMux.HandleFunc("POST /api/revoke", apiCfg.handleRevoke)
 	serveMux.HandleFunc("PUT /api/users", apiCfg.handleUpdateUser)
 
 	server := &http.Server{
