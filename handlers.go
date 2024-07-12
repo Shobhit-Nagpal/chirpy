@@ -232,10 +232,10 @@ func handleCreateUser(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-  type Response struct {
-    Id    int    `json:"id"`
-    Email string `json:"email"`
-  }
+	type Response struct {
+		Id    int    `json:"id"`
+		Email string `json:"email"`
+	}
 
 	resp := Response{
 		Email: user.Email,
@@ -286,13 +286,13 @@ func (cfg *apiConfig) handleLogin(w http.ResponseWriter, req *http.Request) {
 	}
 
 	type Response struct {
-		Id    int    `json:"id"`
-		Email string `json:"email"`
-		Token string `json:"token"`
-    RefreshToken string `json:"refresh_token"`
+		Id           int    `json:"id"`
+		Email        string `json:"email"`
+		Token        string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 
-	login, user, err := db.LoginUser(body.Email, body.Password)
+	login, user, refreshToken, err := db.LoginUser(body.Email, body.Password)
 	if err != nil {
 		log.Printf("Error logging in user: %s", err)
 		if err.Error() == "User not found" {
@@ -309,7 +309,7 @@ func (cfg *apiConfig) handleLogin(w http.ResponseWriter, req *http.Request) {
 		claims := &jwt.RegisteredClaims{
 			Issuer:    "chirpy",
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(60 * 60 * time.Second)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
 			Subject:   strconv.Itoa(user.Id),
 		}
 
@@ -319,18 +319,11 @@ func (cfg *apiConfig) handleLogin(w http.ResponseWriter, req *http.Request) {
 			log.Printf("Error creating jwt: %s", err)
 			err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		}
-    refreshTokenBytes := make([]byte, 32)
-    _, err = rand.Read(refreshTokenBytes)
-		if err != nil {
-			log.Printf("Error creating refresh token: %s", err)
-			err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
-		}
-
 		resp := Response{
-			Email: user.Email,
-			Id:    user.Id,
-			Token: ss,
-      RefreshToken: hex.EncodeToString(refreshTokenBytes),
+			Email:        user.Email,
+			Id:           user.Id,
+			Token:        ss,
+			RefreshToken: refreshToken,
 		}
 		err = respondWithJSON(w, http.StatusOK, resp)
 		if err != nil {
@@ -347,14 +340,14 @@ func (cfg *apiConfig) handleUpdateUser(w http.ResponseWriter, req *http.Request)
 		Password string `json:"password"`
 	}
 
-  bodyBytes, err := io.ReadAll(req.Body)
+	bodyBytes, err := io.ReadAll(req.Body)
 	if err != nil {
 		log.Printf("Error encoding to json: %s", err)
 		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		return
 	}
 
-  body := Request{}
+	body := Request{}
 
 	err = json.Unmarshal(bodyBytes, &body)
 	if err != nil {
@@ -363,87 +356,37 @@ func (cfg *apiConfig) handleUpdateUser(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-  authorization := req.Header.Get("Authorization")
-  if authorization == "" {
-    //return with err
-    err = respondWithError(w, http.StatusUnauthorized, "Unauthorized")
-    return
-  }
-
-  tokenString := strings.Fields(authorization)
-  token, err := jwt.ParseWithClaims(tokenString[1], &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
-    return []byte(cfg.jwtSecret), nil
-  })
-	if err != nil {
-		log.Printf("Error parsing token: %s", err)
-    err = respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+	authorization := req.Header.Get("Authorization")
+	if authorization == "" {
+		//return with err
+		err = respondWithError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
-  userId, err := token.Claims.GetSubject()
+	tokenString := strings.Fields(authorization)
+	token, err := jwt.ParseWithClaims(tokenString[1], &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(cfg.jwtSecret), nil
+	})
+	if err != nil {
+		log.Printf("Error parsing token: %s", err)
+		err = respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	userId, err := token.Claims.GetSubject()
 	if err != nil {
 		log.Printf("Error getting user id: %s", err)
 		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		return
 	}
 
-  userIdInt, err := strconv.Atoi(userId)
-  fmt.Println(userId)
+	userIdInt, err := strconv.Atoi(userId)
+	fmt.Println(userId)
 	if err != nil {
 		log.Printf("Error converting user id: %s", err)
 		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		return
 	}
-
-  path, err := os.Getwd()
-	if err != nil {
-		log.Printf("Error getting current directory: %s", err)
-		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
-		return
-	}
-
-	db, err := database.NewDB(path + "/database.json")
-	if err != nil {
-		log.Printf("Error creating DB connection: %s", err)
-		err = respondWithError(w, http.StatusInternalServerError, "Couldn't connect to DB")
-		return
-	}
-
-  fmt.Println("ALL GOOD HERE")
-
-  user, err := db.UpdateUser(userIdInt, body.Email, body.Password)
-	if err != nil {
-		log.Printf("Error updating user: %s", err)
-		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
-		return
-	}
-
-	type Response struct {
-		Id    int    `json:"id"`
-		Email string `json:"email"`
-	}
-
-		resp := Response{
-			Email: user.Email,
-			Id:    user.Id,
-		}
-		err = respondWithJSON(w, http.StatusOK, resp)
-		if err != nil {
-			log.Printf("Error encoding to json: %s", err)
-			err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
-		}
-	return
-}
-
-func (cfg *apiConfig) handleRefresh(w http.ResponseWriter, req *http.Request) {
-  authorization := req.Header.Get("Authorization")
-  if authorization == "" {
-    //return with err
-    respondWithError(w, http.StatusUnauthorized, "Unauthorized")
-    return
-  }
-
-  tokenString := strings.Fields(authorization)
 
 	path, err := os.Getwd()
 	if err != nil {
@@ -458,4 +401,98 @@ func (cfg *apiConfig) handleRefresh(w http.ResponseWriter, req *http.Request) {
 		err = respondWithError(w, http.StatusInternalServerError, "Couldn't connect to DB")
 		return
 	}
+
+	fmt.Println("ALL GOOD HERE")
+
+	user, err := db.UpdateUser(userIdInt, body.Email, body.Password)
+	if err != nil {
+		log.Printf("Error updating user: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	type Response struct {
+		Id    int    `json:"id"`
+		Email string `json:"email"`
+	}
+
+	resp := Response{
+		Email: user.Email,
+		Id:    user.Id,
+	}
+	err = respondWithJSON(w, http.StatusOK, resp)
+	if err != nil {
+		log.Printf("Error encoding to json: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+	}
+	return
+}
+
+func (cfg *apiConfig) handleRefresh(w http.ResponseWriter, req *http.Request) {
+	authorization := req.Header.Get("Authorization")
+	if authorization == "" {
+		//return with err
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	tokenString := strings.Fields(authorization)
+
+	if len(tokenString) < 2 {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	path, err := os.Getwd()
+	if err != nil {
+		log.Printf("Error getting current directory: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	db, err := database.NewDB(path + "/database.json")
+	if err != nil {
+		log.Printf("Error creating DB connection: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Couldn't connect to DB")
+		return
+	}
+
+	valid, id, err := db.ValidateRefreshToken(tokenString[1])
+	if err != nil {
+		log.Printf("Error creating DB connection: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Couldn't connect to DB")
+		return
+	}
+
+	if !valid {
+		err = respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	type Response struct {
+		Token string `json:"token"`
+	}
+
+	claims := &jwt.RegisteredClaims{
+		Issuer:    "chirpy",
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
+		Subject:   strconv.Itoa(id),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	ss, err := token.SignedString(cfg.jwtSecret)
+	if err != nil {
+		log.Printf("Error creating jwt: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+	}
+	resp := Response{
+		Token: ss,
+	}
+	err = respondWithJSON(w, http.StatusOK, resp)
+	if err != nil {
+		log.Printf("Error encoding to json: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+	}
+	return
 }

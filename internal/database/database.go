@@ -1,11 +1,15 @@
 package database
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"golang.org/x/crypto/bcrypt"
 	"os"
 	"sync"
+	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -31,8 +35,14 @@ type DB struct {
 }
 
 type DBStructure struct {
-	Chirps map[int]Chirp `json:"chirps"`
-	Users  map[int]User  `json:"users"`
+	Chirps        map[int]Chirp        `json:"chirps"`
+	Users         map[int]User         `json:"users"`
+	RefreshTokens map[int]RefreshToken `json:"refresh_tokens"`
+}
+
+type RefreshToken struct {
+	Token      string    `json:"token"`
+	Expiration time.Time `json:"exp"`
 }
 
 func NewDB(path string) (*DB, error) {
@@ -124,47 +134,60 @@ func (db *DB) CreateUser(email, password string) (User, error) {
 func (db *DB) UpdateUser(id int, email, password string) (User, error) {
 	db.mux.Lock()
 	defer db.mux.Unlock()
-  dat, err := db.loadDB()
+	dat, err := db.loadDB()
 	if err != nil {
 		return User{}, err
 	}
 
-  for _, userInDb := range dat.Users {
-    if userInDb.Id == id {
-      userInDb.Email = email
-      hashedPwdBytes, err := bcrypt.GenerateFromPassword([]byte(password), DefaultCost)
-      if err != nil {
-        return User{}, err
-      }
-      userInDb.Password = string(hashedPwdBytes)
-      dat.Users[id] = userInDb
-      db.writeDB(dat)
-      return userInDb, nil
-    }
-  }
-  return User{}, errors.New("User doesn't exist")
+	for _, userInDb := range dat.Users {
+		if userInDb.Id == id {
+			userInDb.Email = email
+			hashedPwdBytes, err := bcrypt.GenerateFromPassword([]byte(password), DefaultCost)
+			if err != nil {
+				return User{}, err
+			}
+			userInDb.Password = string(hashedPwdBytes)
+			dat.Users[id] = userInDb
+			db.writeDB(dat)
+			return userInDb, nil
+		}
+	}
+	return User{}, errors.New("User doesn't exist")
 }
 
-func (db *DB) LoginUser(email, password string) (bool, User, error) {
-  user := User{}
+func (db *DB) LoginUser(email, password string) (bool, User, string, error) {
+	user := User{}
 
 	dat, err := db.loadDB()
 	if err != nil {
-		return false, user, err
+		return false, user, "", err
 	}
 
-  for _, userInDb := range dat.Users {
-    if userInDb.Email == email {
-      err = bcrypt.CompareHashAndPassword([]byte(userInDb.Password), []byte(password))
-      if err != nil {
-        return false, user, nil
-      }
+	for _, userInDb := range dat.Users {
+		if userInDb.Email == email {
+			err = bcrypt.CompareHashAndPassword([]byte(userInDb.Password), []byte(password))
+			if err != nil {
+				return false, user, "", nil
+			}
 
-      return true, userInDb, nil
-    }
-  }
+			refreshTokenBytes := make([]byte, 32)
+			_, err := rand.Read(refreshTokenBytes)
+			if err != nil {
+				return false, user, "", nil
+			}
 
-  return false, user, errors.New("User not found")
+			refreshToken := RefreshToken{
+				Token:      hex.EncodeToString(refreshTokenBytes),
+				Expiration: time.Now().Add(time.Hour * 24 * 60),
+			}
+
+			dat.RefreshTokens[userInDb.Id] = refreshToken
+
+			return true, userInDb, hex.EncodeToString(refreshTokenBytes), nil
+		}
+	}
+
+	return false, user, "", errors.New("User not found")
 }
 
 func (db *DB) GetChirps() ([]Chirp, error) {
@@ -248,4 +271,23 @@ func (db *DB) writeDB(dbStructure DBStructure) error {
 	}
 
 	return nil
+}
+
+func (db *DB) ValidateRefreshToken(token string) (bool, int, error) {
+	data, err := db.loadDB()
+	if err != nil {
+		return false, 0, err
+	}
+
+	for id, refreshToken := range data.RefreshTokens {
+		if refreshToken.Token == token {
+			if time.Now().Sub(refreshToken.Expiration) >= 0 {
+				return false, 0, nil
+			}
+			return true, id, nil
+		}
+	}
+
+	return false, 0, errors.New("Token not found")
+
 }
