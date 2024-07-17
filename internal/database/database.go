@@ -158,6 +158,9 @@ func (db *DB) UpdateUser(id int, email, password string) (User, error) {
 func (db *DB) LoginUser(email, password string) (bool, User, string, error) {
 	user := User{}
 
+  db.mux.Lock()
+  defer db.mux.Unlock()
+
 	dat, err := db.loadDB()
 	if err != nil {
 		return false, user, "", err
@@ -182,6 +185,8 @@ func (db *DB) LoginUser(email, password string) (bool, User, string, error) {
 			}
 
 			dat.RefreshTokens[userInDb.Id] = refreshToken
+
+			db.writeDB(dat)
 
 			return true, userInDb, hex.EncodeToString(refreshTokenBytes), nil
 		}
@@ -246,6 +251,7 @@ func (db *DB) loadDB() (DBStructure, error) {
 	dbStructure := DBStructure{
 		Chirps: map[int]Chirp{},
 		Users:  map[int]User{},
+    RefreshTokens: map[int]RefreshToken{},
 	}
 	dat, err := os.ReadFile(db.path)
 	if err != nil {
@@ -279,6 +285,10 @@ func (db *DB) ValidateRefreshToken(token string) (bool, int, error) {
 		return false, 0, err
 	}
 
+  if len(data.RefreshTokens) == 0 {
+    return false, 0, nil
+  }
+
 	for id, refreshToken := range data.RefreshTokens {
 		if refreshToken.Token == token {
 			if time.Now().Sub(refreshToken.Expiration) >= 0 {
@@ -289,5 +299,26 @@ func (db *DB) ValidateRefreshToken(token string) (bool, int, error) {
 	}
 
 	return false, 0, errors.New("Token not found")
+
+}
+
+func (db *DB) RevokeToken(token string) error {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	data, err := db.loadDB()
+	if err != nil {
+    return err
+	}
+
+	for id, refreshToken := range data.RefreshTokens {
+		if refreshToken.Token == token {
+      delete(data.RefreshTokens, id)
+      db.writeDB(data)
+      return nil
+		}
+	}
+
+	return errors.New("Token not found")
 
 }

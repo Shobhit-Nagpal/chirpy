@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -367,6 +365,7 @@ func (cfg *apiConfig) handleUpdateUser(w http.ResponseWriter, req *http.Request)
 	token, err := jwt.ParseWithClaims(tokenString[1], &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(cfg.jwtSecret), nil
 	})
+
 	if err != nil {
 		log.Printf("Error parsing token: %s", err)
 		err = respondWithError(w, http.StatusUnauthorized, "Unauthorized")
@@ -402,8 +401,6 @@ func (cfg *apiConfig) handleUpdateUser(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	fmt.Println("ALL GOOD HERE")
-
 	user, err := db.UpdateUser(userIdInt, body.Email, body.Password)
 	if err != nil {
 		log.Printf("Error updating user: %s", err)
@@ -428,7 +425,7 @@ func (cfg *apiConfig) handleUpdateUser(w http.ResponseWriter, req *http.Request)
 	return
 }
 
-func (cfg *apiConfig) handleRefresh(w http.ResponseWriter, req *http.Request) {
+func (cfg *apiConfig) handleRefreshToken(w http.ResponseWriter, req *http.Request) {
 	authorization := req.Header.Get("Authorization")
 	if authorization == "" {
 		//return with err
@@ -456,6 +453,8 @@ func (cfg *apiConfig) handleRefresh(w http.ResponseWriter, req *http.Request) {
 		err = respondWithError(w, http.StatusInternalServerError, "Couldn't connect to DB")
 		return
 	}
+
+	fmt.Println(tokenString[1])
 
 	valid, id, err := db.ValidateRefreshToken(tokenString[1])
 	if err != nil {
@@ -490,6 +489,53 @@ func (cfg *apiConfig) handleRefresh(w http.ResponseWriter, req *http.Request) {
 		Token: ss,
 	}
 	err = respondWithJSON(w, http.StatusOK, resp)
+	if err != nil {
+		log.Printf("Error encoding to json: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+	}
+	return
+}
+
+func (cfg *apiConfig) handleRevokeToken(w http.ResponseWriter, req *http.Request) {
+	authorization := req.Header.Get("Authorization")
+	if authorization == "" {
+		//return with err
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	tokenString := strings.Fields(authorization)
+
+	if len(tokenString) < 2 {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	path, err := os.Getwd()
+	if err != nil {
+		log.Printf("Error getting current directory: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	db, err := database.NewDB(path + "/database.json")
+	if err != nil {
+		log.Printf("Error creating DB connection: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Couldn't connect to DB")
+		return
+	}
+
+	err = db.RevokeToken(tokenString[1])
+	if err != nil {
+		log.Printf("Error revoking token: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	type Response struct {
+	}
+
+	err = respondWithJSON(w, http.StatusNoContent, Response{})
 	if err != nil {
 		log.Printf("Error encoding to json: %s", err)
 		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
