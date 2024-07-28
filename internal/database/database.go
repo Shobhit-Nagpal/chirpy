@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -199,7 +200,7 @@ func (db *DB) LoginUser(email, password string) (bool, User, string, error) {
 	return false, user, "", errors.New("User not found")
 }
 
-func (db *DB) GetChirps() ([]Chirp, error) {
+func (db *DB) GetChirps(order string) ([]Chirp, error) {
 
 	chirps := []Chirp{}
 
@@ -212,7 +213,16 @@ func (db *DB) GetChirps() ([]Chirp, error) {
 		chirps = append(chirps, chirp)
 	}
 
-	return chirps, nil
+	if order == "" || order == "asc" {
+		return chirps, nil
+	} else {
+		sort.Slice(chirps, func(i, j int) bool {
+			return chirps[i].Id < chirps[j].Id
+		})
+
+		return chirps, nil
+	}
+
 }
 
 func (db *DB) ensureDB() error {
@@ -377,7 +387,7 @@ func (db *DB) UpgradeUser(userId int) error {
 	return errors.New("No user found")
 }
 
-func (db *DB) GetChirpsByAuthorId(authorId int) ([]Chirp, error) {
+func (db *DB) GetChirpsByAuthorId(authorId int, order string) ([]Chirp, error) {
 	chirps := []Chirp{}
 
 	dat, err := db.loadDB()
@@ -391,5 +401,14 @@ func (db *DB) GetChirpsByAuthorId(authorId int) ([]Chirp, error) {
 		}
 	}
 
-	return chirps, nil
+	if order == "" || order == "asc" {
+		return chirps, nil
+	} else {
+		sort.Slice(chirps, func(i, j int) bool {
+			return chirps[i].Id < chirps[j].Id
+		})
+
+		return chirps, nil
+	}
+
 }

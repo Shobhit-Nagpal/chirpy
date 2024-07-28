@@ -154,6 +154,8 @@ func (cfg *apiConfig) handleGetChirps(w http.ResponseWriter, req *http.Request) 
 	}
 
 	s := req.URL.Query().Get("author_id")
+	order := req.URL.Query().Get("sort")
+
 	if s != "" {
 		authorId, err := strconv.Atoi(s)
 		if err != nil {
@@ -161,7 +163,7 @@ func (cfg *apiConfig) handleGetChirps(w http.ResponseWriter, req *http.Request) 
 			err = respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
 			return
 		}
-		chirps, err := db.GetChirpsByAuthorId(authorId)
+		chirps, err := db.GetChirpsByAuthorId(authorId, order)
 		if err != nil {
 			log.Printf("Error getting chirps: %s", err)
 			err = respondWithError(w, http.StatusInternalServerError, "Couldn't get chirps")
@@ -176,7 +178,7 @@ func (cfg *apiConfig) handleGetChirps(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	chirps, err := db.GetChirps()
+	chirps, err := db.GetChirps(order)
 	if err != nil {
 		log.Printf("Error getting chirps: %s", err)
 		err = respondWithError(w, http.StatusInternalServerError, "Couldn't get chirps")
