@@ -77,7 +77,7 @@ func (db *DB) CreateChirp(body string, userId int) (Chirp, error) {
 
 	chirp.Id = len(chirps) + 1
 	chirp.Body = body
-  chirp.AuthorId = userId
+	chirp.AuthorId = userId
 	chirps = append(chirps, chirp)
 
 	for idx := range chirps {
@@ -207,7 +207,7 @@ func (db *DB) GetChirps() ([]Chirp, error) {
 	}
 
 	for _, chirp := range data.Chirps {
-    chirps = append(chirps, chirp)
+		chirps = append(chirps, chirp)
 	}
 
 	return chirps, nil
@@ -323,4 +323,28 @@ func (db *DB) RevokeToken(token string) error {
 
 	return errors.New("Token not found")
 
+}
+
+func (db *DB) DeleteChirp(chirpId, userId int) error {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+	dat, err := db.loadDB()
+	if err != nil {
+		return err
+	}
+
+	for _, chirp := range dat.Chirps {
+		if chirp.Id == chirpId {
+
+			if chirp.AuthorId == userId {
+				delete(dat.Chirps, chirpId)
+				return nil
+			}
+
+			return errors.New("Forbidden")
+
+		}
+	}
+
+	return errors.New("Chirp does not exist")
 }

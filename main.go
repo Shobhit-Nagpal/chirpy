@@ -43,6 +43,7 @@ func main() {
 	serveMux.HandleFunc("POST /api/chirps", apiCfg.handleCreateChirp)
 	serveMux.HandleFunc("GET /api/chirps", apiCfg.handleGetChirps)
 	serveMux.HandleFunc("GET /api/chirps/{chirpId}", handleGetChirpById)
+	serveMux.HandleFunc("DELETE /api/chirps/{chirpId}", apiCfg.handleDeleteChirpById)
 
 	//User routes
 	serveMux.HandleFunc("POST /api/users", handleCreateUser)

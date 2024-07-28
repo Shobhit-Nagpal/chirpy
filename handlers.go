@@ -571,3 +571,79 @@ func (cfg *apiConfig) handleRevokeToken(w http.ResponseWriter, req *http.Request
 	}
 	return
 }
+
+
+func (cfg *apiConfig) handleDeleteChirpById(w http.ResponseWriter, req *http.Request) {
+
+	authorization := req.Header.Get("Authorization")
+	if authorization == "" {
+		//return with err
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	tokenString := strings.Fields(authorization)
+	token, err := jwt.ParseWithClaims(tokenString[1], &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(cfg.jwtSecret), nil
+	})
+
+	if err != nil {
+		log.Printf("Error parsing token: %s", err)
+		err = respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	idStr := req.PathValue("chirpId")
+
+	path, err := os.Getwd()
+	if err != nil {
+		log.Printf("Error getting current directory: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	db, err := database.NewDB(path + "/database.json")
+	if err != nil {
+		log.Printf("Error creating DB connection: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Couldn't connect to DB")
+		return
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		log.Printf("Error converting string to integer for id: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+
+	userId, err := token.Claims.GetSubject()
+	if err != nil {
+		log.Printf("Error getting user id: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	userIdInt, err := strconv.Atoi(userId)
+
+
+	err = db.DeleteChirp(id, userIdInt)
+	if err != nil {
+		log.Printf("Error getting chirps: %s", err)
+		if err.Error() == "Forbidden" {
+			err = respondWithError(w, http.StatusForbidden, err.Error())
+		} else {
+			err = respondWithError(w, http.StatusInternalServerError, "Couldn't get chirps")
+		}
+		return
+	}
+
+  type Response struct {
+  }
+
+	err = respondWithJSON(w, http.StatusNoContent, Response{})
+	if err != nil {
+		log.Printf("Error encoding to json: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+	}
+	return
+}
