@@ -153,6 +153,29 @@ func (cfg *apiConfig) handleGetChirps(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
+	s := req.URL.Query().Get("author_id")
+	if s != "" {
+		authorId, err := strconv.Atoi(s)
+		if err != nil {
+			log.Printf("Error converting string to integer for id: %s", err)
+			err = respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
+			return
+		}
+		chirps, err := db.GetChirpsByAuthorId(authorId)
+		if err != nil {
+			log.Printf("Error getting chirps: %s", err)
+			err = respondWithError(w, http.StatusInternalServerError, "Couldn't get chirps")
+			return
+		}
+
+		err = respondWithJSON(w, http.StatusOK, chirps)
+		if err != nil {
+			log.Printf("Error encoding to json: %s", err)
+			err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		}
+		return
+	}
+
 	chirps, err := db.GetChirps()
 	if err != nil {
 		log.Printf("Error getting chirps: %s", err)

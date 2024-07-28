@@ -363,11 +363,11 @@ func (db *DB) UpgradeUser(userId int) error {
 		if user.Id == userId {
 
 			dat.Users[userId] = User{
-        Id: user.Id,
-        Email: user.Email,
-        Password: user.Password,
-        IsChirpyRed: true,
-      }
+				Id:          user.Id,
+				Email:       user.Email,
+				Password:    user.Password,
+				IsChirpyRed: true,
+			}
 
 			db.writeDB(dat)
 			return nil
@@ -375,4 +375,21 @@ func (db *DB) UpgradeUser(userId int) error {
 	}
 
 	return errors.New("No user found")
+}
+
+func (db *DB) GetChirpsByAuthorId(authorId int) ([]Chirp, error) {
+	chirps := []Chirp{}
+
+	dat, err := db.loadDB()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, chirp := range dat.Chirps {
+		if chirp.AuthorId == authorId {
+			chirps = append(chirps, chirp)
+		}
+	}
+
+	return chirps, nil
 }
