@@ -25,9 +25,10 @@ type Chirp struct {
 }
 
 type User struct {
-	Id       int    `json:"id"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Id          int    `json:"id"`
+	Email       string `json:"email"`
+	Password    string `json:"password"`
+	IsChirpyRed bool   `json:"is_chirpy_red"`
 }
 
 type DB struct {
@@ -116,6 +117,7 @@ func (db *DB) CreateUser(email, password string) (User, error) {
 		return User{}, err
 	}
 	user.Password = string(hashedPwdBytes)
+	user.IsChirpyRed = false
 	users = append(users, user)
 
 	for idx, user := range users {
@@ -347,4 +349,30 @@ func (db *DB) DeleteChirp(chirpId, userId int) error {
 	}
 
 	return errors.New("Chirp does not exist")
+}
+
+func (db *DB) UpgradeUser(userId int) error {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+	dat, err := db.loadDB()
+	if err != nil {
+		return err
+	}
+
+	for _, user := range dat.Users {
+		if user.Id == userId {
+
+			dat.Users[userId] = User{
+        Id: user.Id,
+        Email: user.Email,
+        Password: user.Password,
+        IsChirpyRed: true,
+      }
+
+			db.writeDB(dat)
+			return nil
+		}
+	}
+
+	return errors.New("No user found")
 }

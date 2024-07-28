@@ -19,10 +19,12 @@ func main() {
 	}
 
   jwt_secret := os.Getenv("JWT_SECRET")
+  polka := os.Getenv("POLKA_API_KEY")
 
 	apiCfg := &apiConfig{
 		fileserverHits: 0,
     jwtSecret: []byte(jwt_secret),
+    polka: polka,
 	}
 
 	serveMux := http.NewServeMux()
@@ -51,6 +53,9 @@ func main() {
 	serveMux.HandleFunc("POST /api/refresh", apiCfg.handleRefreshToken)
 	serveMux.HandleFunc("POST /api/revoke", apiCfg.handleRevokeToken)
 	serveMux.HandleFunc("PUT /api/users", apiCfg.handleUpdateUser)
+
+  //Webhoo routes
+  serveMux.HandleFunc("POST /api/polka/webhooks", apiCfg.handlePolkaWebhook)
 
 	server := &http.Server{
 		Handler: serveMux,

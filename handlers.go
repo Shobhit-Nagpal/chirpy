@@ -107,9 +107,9 @@ func (cfg *apiConfig) handleCreateChirp(w http.ResponseWriter, req *http.Request
 	}
 
 	response := CleanedResponse{
-		Id:   chirp.Id,
-		Body: chirp.Body,
-    AuthorId: chirp.AuthorId,
+		Id:       chirp.Id,
+		Body:     chirp.Body,
+		AuthorId: chirp.AuthorId,
 	}
 
 	err = respondWithJSON(w, http.StatusCreated, response)
@@ -260,13 +260,15 @@ func handleCreateUser(w http.ResponseWriter, req *http.Request) {
 	}
 
 	type Response struct {
-		Id    int    `json:"id"`
-		Email string `json:"email"`
+		Id          int    `json:"id"`
+		Email       string `json:"email"`
+		IsChirpyRed bool   `json:"is_chirpy_red"`
 	}
 
 	resp := Response{
-		Email: user.Email,
-		Id:    user.Id,
+		Email:       user.Email,
+		Id:          user.Id,
+		IsChirpyRed: user.IsChirpyRed,
 	}
 	err = respondWithJSON(w, http.StatusCreated, resp)
 	if err != nil {
@@ -317,6 +319,7 @@ func (cfg *apiConfig) handleLogin(w http.ResponseWriter, req *http.Request) {
 		Email        string `json:"email"`
 		Token        string `json:"token"`
 		RefreshToken string `json:"refresh_token"`
+		IsChirpyRed  bool   `json:"is_chirpy_red"`
 	}
 
 	login, user, refreshToken, err := db.LoginUser(body.Email, body.Password)
@@ -351,6 +354,7 @@ func (cfg *apiConfig) handleLogin(w http.ResponseWriter, req *http.Request) {
 			Id:           user.Id,
 			Token:        ss,
 			RefreshToken: refreshToken,
+			IsChirpyRed:  user.IsChirpyRed,
 		}
 		err = respondWithJSON(w, http.StatusOK, resp)
 		if err != nil {
@@ -572,7 +576,6 @@ func (cfg *apiConfig) handleRevokeToken(w http.ResponseWriter, req *http.Request
 	return
 }
 
-
 func (cfg *apiConfig) handleDeleteChirpById(w http.ResponseWriter, req *http.Request) {
 
 	authorization := req.Header.Get("Authorization")
@@ -625,7 +628,6 @@ func (cfg *apiConfig) handleDeleteChirpById(w http.ResponseWriter, req *http.Req
 
 	userIdInt, err := strconv.Atoi(userId)
 
-
 	err = db.DeleteChirp(id, userIdInt)
 	if err != nil {
 		log.Printf("Error getting chirps: %s", err)
@@ -637,8 +639,8 @@ func (cfg *apiConfig) handleDeleteChirpById(w http.ResponseWriter, req *http.Req
 		return
 	}
 
-  type Response struct {
-  }
+	type Response struct {
+	}
 
 	err = respondWithJSON(w, http.StatusNoContent, Response{})
 	if err != nil {
@@ -646,4 +648,84 @@ func (cfg *apiConfig) handleDeleteChirpById(w http.ResponseWriter, req *http.Req
 		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 	}
 	return
+}
+
+func (cfg *apiConfig) handlePolkaWebhook(w http.ResponseWriter, req *http.Request) {
+
+	type UserId struct {
+		Id int `json:"user_id"`
+	}
+	type Request struct {
+		Event string `json:"event"`
+		Data  UserId `json:"data"`
+	}
+
+	authorization := req.Header.Get("Authorization")
+	if authorization == "" {
+		//return with err
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	tokenString := strings.Fields(authorization)
+
+	if tokenString[1] != cfg.polka {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	bodyFromReq, err := io.ReadAll(req.Body)
+	if err != nil {
+		log.Printf("Error encoding to json: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	reqBody := Request{}
+
+	err = json.Unmarshal(bodyFromReq, &reqBody)
+	if err != nil {
+		log.Printf("Error encoding to json: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	event := reqBody.Event
+
+	type Response struct {
+	}
+
+	if event != "user.upgraded" {
+		err = respondWithJSON(w, http.StatusNoContent, Response{})
+		return
+	}
+
+	userId := reqBody.Data.Id
+
+	path, err := os.Getwd()
+	if err != nil {
+		log.Printf("Error getting current directory: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	db, err := database.NewDB(path + "/database.json")
+	if err != nil {
+		log.Printf("Error creating DB connection: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Couldn't connect to DB")
+		return
+	}
+
+	err = db.UpgradeUser(userId)
+	if err != nil {
+		log.Printf("Error getting chirps: %s", err)
+		if err.Error() == "No user found" {
+			err = respondWithError(w, http.StatusNotFound, err.Error())
+		} else {
+			err = respondWithError(w, http.StatusInternalServerError, "Internal server error")
+		}
+		return
+	}
+
+	err = respondWithJSON(w, http.StatusNoContent, Response{})
 }
