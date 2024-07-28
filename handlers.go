@@ -15,7 +15,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func handleCreateChirp(w http.ResponseWriter, req *http.Request) {
+func (cfg *apiConfig) handleCreateChirp(w http.ResponseWriter, req *http.Request) {
 	type ReqBody struct {
 		Body string `json:"body"`
 	}
@@ -29,8 +29,27 @@ func handleCreateChirp(w http.ResponseWriter, req *http.Request) {
 	}
 
 	type CleanedResponse struct {
-		Id   int    `json:"id"`
-		Body string `json:"body"`
+		Id       int    `json:"id"`
+		Body     string `json:"body"`
+		AuthorId int    `json:"author_id"`
+	}
+
+	authorization := req.Header.Get("Authorization")
+	if authorization == "" {
+		//return with err
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	tokenString := strings.Fields(authorization)
+	token, err := jwt.ParseWithClaims(tokenString[1], &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(cfg.jwtSecret), nil
+	})
+
+	if err != nil {
+		log.Printf("Error parsing token: %s", err)
+		err = respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
 	}
 
 	bodyFromReq, err := io.ReadAll(req.Body)
@@ -71,7 +90,16 @@ func handleCreateChirp(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	chirp, err := db.CreateChirp(cleanedMsg)
+	userId, err := token.Claims.GetSubject()
+	if err != nil {
+		log.Printf("Error getting user id: %s", err)
+		err = respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	userIdInt, err := strconv.Atoi(userId)
+
+	chirp, err := db.CreateChirp(cleanedMsg, userIdInt)
 	if err != nil {
 		log.Printf("Error creating chirp: %s", err)
 		err = respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp")
@@ -81,6 +109,7 @@ func handleCreateChirp(w http.ResponseWriter, req *http.Request) {
 	response := CleanedResponse{
 		Id:   chirp.Id,
 		Body: chirp.Body,
+    AuthorId: chirp.AuthorId,
 	}
 
 	err = respondWithJSON(w, http.StatusCreated, response)
@@ -108,7 +137,7 @@ func cleanMessage(msg string) string {
 	return cleanMsg
 }
 
-func handleGetChirps(w http.ResponseWriter, req *http.Request) {
+func (cfg *apiConfig) handleGetChirps(w http.ResponseWriter, req *http.Request) {
 
 	path, err := os.Getwd()
 	if err != nil {

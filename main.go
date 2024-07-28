@@ -40,8 +40,8 @@ func main() {
 	serveMux.HandleFunc("GET /api/reset", apiCfg.handleReset)
 
 	//Chirp routes
-	serveMux.HandleFunc("POST /api/chirps", handleCreateChirp)
-	serveMux.HandleFunc("GET /api/chirps", handleGetChirps)
+	serveMux.HandleFunc("POST /api/chirps", apiCfg.handleCreateChirp)
+	serveMux.HandleFunc("GET /api/chirps", apiCfg.handleGetChirps)
 	serveMux.HandleFunc("GET /api/chirps/{chirpId}", handleGetChirpById)
 
 	//User routes

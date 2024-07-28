@@ -19,8 +19,9 @@ const (
 )
 
 type Chirp struct {
-	Id   int    `json:"id"`
-	Body string `json:"body"`
+	Id       int    `json:"id"`
+	Body     string `json:"body"`
+	AuthorId int    `json:"author_id"`
 }
 
 type User struct {
@@ -59,7 +60,7 @@ func NewDB(path string) (*DB, error) {
 	return db, nil
 }
 
-func (db *DB) CreateChirp(body string) (Chirp, error) {
+func (db *DB) CreateChirp(body string, userId int) (Chirp, error) {
 	chirp := Chirp{}
 	db.mux.Lock()
 	defer db.mux.Unlock()
@@ -76,6 +77,7 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 
 	chirp.Id = len(chirps) + 1
 	chirp.Body = body
+  chirp.AuthorId = userId
 	chirps = append(chirps, chirp)
 
 	for idx := range chirps {
@@ -158,8 +160,8 @@ func (db *DB) UpdateUser(id int, email, password string) (User, error) {
 func (db *DB) LoginUser(email, password string) (bool, User, string, error) {
 	user := User{}
 
-  db.mux.Lock()
-  defer db.mux.Unlock()
+	db.mux.Lock()
+	defer db.mux.Unlock()
 
 	dat, err := db.loadDB()
 	if err != nil {
@@ -205,7 +207,7 @@ func (db *DB) GetChirps() ([]Chirp, error) {
 	}
 
 	for _, chirp := range data.Chirps {
-		chirps = append(chirps, chirp)
+    chirps = append(chirps, chirp)
 	}
 
 	return chirps, nil
@@ -249,9 +251,9 @@ func (db *DB) GetChirpById(id int) (Chirp, error) {
 
 func (db *DB) loadDB() (DBStructure, error) {
 	dbStructure := DBStructure{
-		Chirps: map[int]Chirp{},
-		Users:  map[int]User{},
-    RefreshTokens: map[int]RefreshToken{},
+		Chirps:        map[int]Chirp{},
+		Users:         map[int]User{},
+		RefreshTokens: map[int]RefreshToken{},
 	}
 	dat, err := os.ReadFile(db.path)
 	if err != nil {
@@ -285,9 +287,9 @@ func (db *DB) ValidateRefreshToken(token string) (bool, int, error) {
 		return false, 0, err
 	}
 
-  if len(data.RefreshTokens) == 0 {
-    return false, 0, nil
-  }
+	if len(data.RefreshTokens) == 0 {
+		return false, 0, nil
+	}
 
 	for id, refreshToken := range data.RefreshTokens {
 		if refreshToken.Token == token {
@@ -308,14 +310,14 @@ func (db *DB) RevokeToken(token string) error {
 
 	data, err := db.loadDB()
 	if err != nil {
-    return err
+		return err
 	}
 
 	for id, refreshToken := range data.RefreshTokens {
 		if refreshToken.Token == token {
-      delete(data.RefreshTokens, id)
-      db.writeDB(data)
-      return nil
+			delete(data.RefreshTokens, id)
+			db.writeDB(data)
+			return nil
 		}
 	}
 
